@@ -11,8 +11,11 @@ namespace MotionMark.SkiaSharp.AvaloniaApp;
 public partial class MainView : UserControl
 {
     private readonly MainWindowViewModel _viewModel = new();
-    private MotionMarkSurface? _surface;
-    private bool _frameStatsSubscribed;
+    private MotionMarkSurface? _managedSurface;
+    private MotionMarkNativeSurface? _nativeSurface;
+    private bool _managedStatsSubscribed;
+    private bool _nativeStatsSubscribed;
+    private TabControl? _tabControl;
 
     public MainView()
     {
@@ -23,6 +26,11 @@ public partial class MainView : UserControl
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
+        _tabControl = this.FindControl<TabControl>("RendererTabs");
+        if (_tabControl is not null)
+        {
+            _tabControl.SelectionChanged += OnTabSelectionChanged;
+        }
     }
 
     private void OnFrameStatsUpdated(object? sender, FrameStats stats)
@@ -37,12 +45,7 @@ public partial class MainView : UserControl
     {
         base.OnAttachedToVisualTree(e);
 
-        _surface ??= this.FindControl<MotionMarkSurface>("Surface");
-        if (_surface is not null && !_frameStatsSubscribed)
-        {
-            _surface.FrameStatsUpdated += OnFrameStatsUpdated;
-            _frameStatsSubscribed = true;
-        }
+        HookSurfaceHandlers();
 
         if (e.Root is TopLevel topLevel)
         {
@@ -55,12 +58,43 @@ public partial class MainView : UserControl
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
-        if (_surface is not null && _frameStatsSubscribed)
-        {
-            _surface.FrameStatsUpdated -= OnFrameStatsUpdated;
-            _frameStatsSubscribed = false;
-        }
+        UnsubscribeSurfaces();
 
         base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnTabSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        => HookSurfaceHandlers();
+
+    private void HookSurfaceHandlers()
+    {
+        _managedSurface ??= this.FindControl<MotionMarkSurface>("ManagedSurface");
+        if (_managedSurface is not null && !_managedStatsSubscribed)
+        {
+            _managedSurface.FrameStatsUpdated += OnFrameStatsUpdated;
+            _managedStatsSubscribed = true;
+        }
+
+        _nativeSurface ??= this.FindControl<MotionMarkNativeSurface>("NativeSurface");
+        if (_nativeSurface is not null && !_nativeStatsSubscribed)
+        {
+            _nativeSurface.FrameStatsUpdated += OnFrameStatsUpdated;
+            _nativeStatsSubscribed = true;
+        }
+    }
+
+    private void UnsubscribeSurfaces()
+    {
+        if (_managedSurface is not null && _managedStatsSubscribed)
+        {
+            _managedSurface.FrameStatsUpdated -= OnFrameStatsUpdated;
+            _managedStatsSubscribed = false;
+        }
+
+        if (_nativeSurface is not null && _nativeStatsSubscribed)
+        {
+            _nativeSurface.FrameStatsUpdated -= OnFrameStatsUpdated;
+            _nativeStatsSubscribed = false;
+        }
     }
 }

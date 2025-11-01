@@ -51,10 +51,21 @@
                       VerticalAlignment="Center"/>
       </StackPanel>
     </Border>
-    <controls:MotionMarkSurface x:Name="Surface"
-                                Grid.Row="1"
-                                Complexity="{Binding Complexity}"
-                                UseMultithreadedRendering="{Binding UseMultithreadedRendering}"
-                                Margin="0"/>
+    <TabControl Grid.Row="1"
+                x:Name="RendererTabs"
+                Margin="0"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch">
+      <!--<TabItem Header="SkiaSharp Managed">
+        <controls:MotionMarkSurface x:Name="ManagedSurface"
+                                    Complexity="{Binding Complexity}"
+                                    UseMultithreadedRendering="{Binding UseMultithreadedRendering}"/>
+      </TabItem>-->
+      <TabItem Header="Skia FFI">
+        <controls:MotionMarkNativeSurface x:Name="NativeSurface"
+                                          Complexity="{Binding Complexity}"
+                                          UseMultithreadedRendering="{Binding UseMultithreadedRendering}"/>
+      </TabItem>
+    </TabControl>
   </Grid>
 </UserControl>
