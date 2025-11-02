@@ -18,6 +18,7 @@
 #include <cstring>
 #include <memory>
 #include <random>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -282,32 +283,34 @@ public:
         }
 
         bool attached = false;
+        const char* backendName = "Raster";
+
+        auto tryAttach = [&](sk_app::Window::BackendType type, const char* name) {
+            if (!attached && fWindow->attach(type)) {
+                attached = true;
+                backendName = name;
+            }
+        };
 
 #if defined(SK_GRAPHITE)
     #if defined(SK_METAL)
-        attached = fWindow->attach(sk_app::Window::kGraphiteMetal_BackendType);
+        tryAttach(sk_app::Window::kGraphiteMetal_BackendType, "Graphite (Metal)");
     #elif defined(SK_DAWN)
-        attached = fWindow->attach(sk_app::Window::kGraphiteDawn_BackendType);
+        tryAttach(sk_app::Window::kGraphiteDawn_BackendType, "Graphite (Dawn)");
     #elif defined(SK_VULKAN)
-        attached = fWindow->attach(sk_app::Window::kGraphiteVulkan_BackendType);
+        tryAttach(sk_app::Window::kGraphiteVulkan_BackendType, "Graphite (Vulkan)");
     #endif
 #endif
 
 #if defined(SK_METAL)
-        if (!attached) {
-            attached = fWindow->attach(sk_app::Window::kMetal_BackendType);
-        }
+        tryAttach(sk_app::Window::kMetal_BackendType, "Metal");
 #endif
 
 #if defined(SK_GL)
-        if (!attached) {
-            attached = fWindow->attach(sk_app::Window::kNativeGL_BackendType);
-        }
+        tryAttach(sk_app::Window::kNativeGL_BackendType, "OpenGL");
 #endif
 
-        if (!attached) {
-            attached = fWindow->attach(sk_app::Window::kRaster_BackendType);
-        }
+        tryAttach(sk_app::Window::kRaster_BackendType, "Raster");
 
         if (!attached) {
             return false;
@@ -317,6 +320,8 @@ public:
         paramsBuilder.msaaSampleCount(4);
         fWindow->setRequestedDisplayParams(paramsBuilder.detach());
 
+        fBackendLabel = backendName;
+
         fLayer = std::make_unique<MotionMarkLayer>();
         if (fRequestedComplexity >= 0) {
             fLayer->setComplexity(fRequestedComplexity);
@@ -324,7 +329,13 @@ public:
 
         fLayer->onResize(fWindow->width(), fWindow->height());
         fWindow->pushLayer(fLayer.get());
-        fWindow->setTitle("MotionMark Native (Skia)");
+
+        char initialTitle[160];
+        std::snprintf(initialTitle,
+                      sizeof(initialTitle),
+                      "MotionMark Native (Skia)  |  Backend %s",
+                      fBackendLabel.c_str());
+        fWindow->setTitle(initialTitle);
         fWindow->show();
         fWindow->inval();
 
@@ -348,7 +359,8 @@ public:
             char title[160];
             std::snprintf(title,
                           sizeof(title),
-                          "MotionMark Native (Skia)  |  %.1f FPS  |  Complexity %d  |  Elements %zu",
+                          "MotionMark Native (Skia)  |  Backend %s  |  %.1f FPS  |  Complexity %d  |  Elements %zu",
+                          fBackendLabel.c_str(),
                           fps,
                           fLayer->complexity(),
                           fLayer->elementCount());
@@ -365,6 +377,7 @@ private:
     double fAccumulatedTime = 0.0;
     int fFrameCounter = 0;
     int fRequestedComplexity = -1;
+    std::string fBackendLabel = "Raster";
 };
 
 int parseComplexityArg(int argc, char** argv) {
