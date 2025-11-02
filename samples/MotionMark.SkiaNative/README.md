@@ -14,7 +14,11 @@ desktop window and reports a running FPS value in the window title bar.
    python3 tools/git-sync-deps
    python3 bin/fetch-gn
    python3 bin/fetch-ninja
+   curl -L https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-darwin-arm64 -o "$HOME/bin/bazelisk"
+   chmod +x "$HOME/bin/bazelisk"
    ```
+
+   Ensure `$HOME/bin` is on your shell `PATH` (for example, add `export PATH="$HOME/bin:$PATH"` to `~/.zshrc`).
 
 2. Generate a build directory that enables the native sample (defaults to a release build):
 
