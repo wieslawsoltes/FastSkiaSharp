@@ -1,7 +1,7 @@
 #include "include/core/SkCanvas.h"
 #include "include/core/SkColor.h"
 #include "include/core/SkPaint.h"
-#include "include/core/SkPath.h"
+#include "include/core/SkPathBuilder.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkSurface.h"
 #include "tools/sk_app/Application.h"
@@ -106,7 +106,7 @@ public:
         const float offsetX = (static_cast<float>(fWidth) - uniformScale * (kGridWidth + 1)) * 0.5f;
         const float offsetY = (static_cast<float>(fHeight) - uniformScale * (kGridHeight + 1)) * 0.5f;
 
-        SkPath path;
+        SkPathBuilder pathBuilder;
         bool pathStarted = false;
 
         for (size_t i = 0; i < fElements.size(); ++i) {
@@ -114,37 +114,36 @@ public:
 
             if (!pathStarted) {
                 const SkPoint start = this->toPoint(element.start, uniformScale, offsetX, offsetY);
-                path.moveTo(start);
+                pathBuilder.moveTo(start);
                 pathStarted = true;
             }
 
             switch (element.kind) {
                 case SegmentKind::kLine: {
                     const SkPoint end = this->toPoint(element.end, uniformScale, offsetX, offsetY);
-                    path.lineTo(end);
+                    pathBuilder.lineTo(end);
                     break;
                 }
                 case SegmentKind::kQuad: {
                     const SkPoint c1 = this->toPoint(element.control1, uniformScale, offsetX, offsetY);
                     const SkPoint end = this->toPoint(element.end, uniformScale, offsetX, offsetY);
-                    path.quadTo(c1, end);
+                    pathBuilder.quadTo(c1, end);
                     break;
                 }
                 case SegmentKind::kCubic: {
                     const SkPoint c1 = this->toPoint(element.control1, uniformScale, offsetX, offsetY);
                     const SkPoint c2 = this->toPoint(element.control2, uniformScale, offsetX, offsetY);
                     const SkPoint end = this->toPoint(element.end, uniformScale, offsetX, offsetY);
-                    path.cubicTo(c1, c2, end);
+                    pathBuilder.cubicTo(c1, c2, end);
                     break;
                 }
             }
 
             const bool finalize = element.split || i + 1 == fElements.size();
-            if (finalize && !path.isEmpty()) {
+            if (finalize && !pathBuilder.isEmpty()) {
                 fStrokePaint.setColor(element.color);
                 fStrokePaint.setStrokeWidth(element.width);
-                canvas->drawPath(path, fStrokePaint);
-                path.reset();
+                canvas->drawPath(pathBuilder.detach(), fStrokePaint);
                 pathStarted = false;
             }
 
@@ -314,9 +313,9 @@ public:
             return false;
         }
 
-        skwindow::DisplayParams params = fWindow->getRequestedDisplayParams();
-        params.fMSAASampleCount = 4;
-        fWindow->setRequestedDisplayParams(params);
+        skwindow::DisplayParamsBuilder paramsBuilder(fWindow->getRequestedDisplayParams());
+        paramsBuilder.msaaSampleCount(4);
+        fWindow->setRequestedDisplayParams(paramsBuilder.detach());
 
         fLayer = std::make_unique<MotionMarkLayer>();
         if (fRequestedComplexity >= 0) {
@@ -382,7 +381,7 @@ int parseComplexityArg(int argc, char** argv) {
 }  // namespace
 
 sk_app::Application* sk_app::Application::Create(int argc, char** argv, void* platformData) {
-    std::unique_ptr<sk_app::Window> window(sk_app::Window::CreateNativeWindow(platformData));
+    std::unique_ptr<sk_app::Window> window(sk_app::Windows::CreateNativeWindow(platformData));
     if (!window) {
         return nullptr;
     }

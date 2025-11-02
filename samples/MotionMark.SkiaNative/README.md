@@ -6,11 +6,14 @@ desktop window and reports a running FPS value in the window title bar.
 
 ## Building
 
-1. Sync Skia's third-party dependencies (only required the first time):
+1. Sync Skia's third-party dependencies (only required the first time) and download the GN/Ninja
+   toolchain binaries:
 
    ```bash
    cd extern/skia
    python3 tools/git-sync-deps
+   python3 bin/fetch-gn
+   python3 bin/fetch-ninja
    ```
 
 2. Generate a build directory that enables the native sample (defaults to a release build):
