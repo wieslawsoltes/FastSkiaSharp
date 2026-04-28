@@ -1,17 +1,12 @@
 using System;
-using System.IO;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using MotionMark.SkiaSharp.Uno.Rendering;
 using Microsoft.UI.Xaml;
-using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
-using Microsoft.UI.Xaml.Media.Imaging;
 using SkiaSharp;
+using SkiaSharp.Views.Windows;
 
 namespace MotionMark.SkiaSharp.Uno.Controls;
 
-public sealed class MotionMarkCanvas : UserControl
+public sealed class MotionMarkCanvas : SKXamlCanvas
 {
     public static readonly DependencyProperty ComplexityProperty =
         DependencyProperty.Register(
@@ -28,12 +23,6 @@ public sealed class MotionMarkCanvas : UserControl
             new PropertyMetadata(!OperatingSystem.IsBrowser(), OnRenderModeChanged));
 
     private readonly MotionMarkScene _scene = new();
-    private readonly Image _image = new()
-    {
-        Stretch = Stretch.Fill,
-        HorizontalAlignment = HorizontalAlignment.Stretch,
-        VerticalAlignment = VerticalAlignment.Stretch,
-    };
     private readonly DispatcherTimer _timer = new()
     {
         Interval = TimeSpan.FromMilliseconds(16)
@@ -41,10 +30,6 @@ public sealed class MotionMarkCanvas : UserControl
     private TimeSpan _lastFrameTimestamp;
     private double _statsAccumulatorMs;
     private int _statsFrameCount;
-    private WriteableBitmap? _bitmap;
-    private byte[] _pixels = [];
-    private int _pixelWidth;
-    private int _pixelHeight;
     private bool _renderFailed;
     private string? _lastRenderError;
 
@@ -52,7 +37,8 @@ public sealed class MotionMarkCanvas : UserControl
 
     public MotionMarkCanvas()
     {
-        Content = _image;
+        IgnorePixelScaling = true;
+
         _timer.Tick += OnTimerTick;
 
         Loaded += OnLoaded;
@@ -77,7 +63,7 @@ public sealed class MotionMarkCanvas : UserControl
         if (dependencyObject is MotionMarkCanvas surface)
         {
             surface._scene.SetComplexity(surface.Complexity);
-            surface.RenderFrame();
+            surface.Invalidate();
         }
     }
 
@@ -87,7 +73,7 @@ public sealed class MotionMarkCanvas : UserControl
         {
             surface._renderFailed = false;
             surface._lastRenderError = null;
-            surface.RenderFrame();
+            surface.Invalidate();
         }
     }
 
@@ -97,7 +83,7 @@ public sealed class MotionMarkCanvas : UserControl
         ResetFrameStats();
         _renderFailed = false;
         _timer.Start();
-        RenderFrame();
+        Invalidate();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -108,9 +94,7 @@ public sealed class MotionMarkCanvas : UserControl
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
     {
-        _pixelWidth = 0;
-        _pixelHeight = 0;
-        RenderFrame();
+        Invalidate();
     }
 
     private void OnTimerTick(object? sender, object e)
@@ -118,6 +102,35 @@ public sealed class MotionMarkCanvas : UserControl
         if (_renderFailed)
             return;
 
+        Invalidate();
+    }
+
+    protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
+    {
+        base.OnPaintSurface(e);
+
+        try
+        {
+            int width = e.Info.Width;
+            int height = e.Info.Height;
+            if (width <= 0 || height <= 0)
+                return;
+
+            _scene.Render(e.Surface.Canvas, width, height);
+            e.Surface.Canvas.Flush();
+            UpdateFrameStats();
+
+            _renderFailed = false;
+        }
+        catch (Exception ex)
+        {
+            LogRenderError("painting SKXamlCanvas surface", ex);
+            _renderFailed = true;
+        }
+    }
+
+    private void UpdateFrameStats()
+    {
         TimeSpan now = TimeSpan.FromTicks(Environment.TickCount64 * TimeSpan.TicksPerMillisecond);
         if (_lastFrameTimestamp != TimeSpan.Zero)
         {
@@ -141,49 +154,6 @@ public sealed class MotionMarkCanvas : UserControl
         }
 
         _lastFrameTimestamp = now;
-        RenderFrame();
-    }
-
-    private void RenderFrame()
-    {
-        try
-        {
-            double scale = XamlRoot?.RasterizationScale ?? 1.0;
-            int width = Math.Max(0, (int)Math.Ceiling(ActualWidth * scale));
-            int height = Math.Max(0, (int)Math.Ceiling(ActualHeight * scale));
-            if (width <= 0 || height <= 0)
-                return;
-
-            EnsureBitmap(width, height);
-
-            var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            GCHandle pixelsHandle = GCHandle.Alloc(_pixels, GCHandleType.Pinned);
-            try
-            {
-                using var surface = SKSurface.Create(info, pixelsHandle.AddrOfPinnedObject(), info.RowBytes);
-                if (surface is null)
-                    throw new InvalidOperationException("Unable to create SkiaSharp render surface.");
-
-                _scene.Render(surface.Canvas, width, height);
-                surface.Canvas.Flush();
-            }
-            finally
-            {
-                pixelsHandle.Free();
-            }
-
-            using Stream stream = _bitmap!.PixelBuffer.AsStream();
-            stream.Seek(0, SeekOrigin.Begin);
-            stream.Write(_pixels, 0, _pixels.Length);
-            _bitmap.Invalidate();
-
-            _renderFailed = false;
-        }
-        catch (Exception ex)
-        {
-            LogRenderError("rendering frame", ex);
-            _renderFailed = true;
-        }
     }
 
     private void ResetFrameStats()
@@ -191,18 +161,6 @@ public sealed class MotionMarkCanvas : UserControl
         _lastFrameTimestamp = TimeSpan.Zero;
         _statsAccumulatorMs = 0;
         _statsFrameCount = 0;
-    }
-
-    private void EnsureBitmap(int width, int height)
-    {
-        if (_bitmap is not null && _pixelWidth == width && _pixelHeight == height)
-            return;
-
-        _pixelWidth = width;
-        _pixelHeight = height;
-        _pixels = new byte[width * height * 4];
-        _bitmap = new WriteableBitmap(width, height);
-        _image.Source = _bitmap;
     }
 
     private void LogRenderError(string stage, Exception exception)

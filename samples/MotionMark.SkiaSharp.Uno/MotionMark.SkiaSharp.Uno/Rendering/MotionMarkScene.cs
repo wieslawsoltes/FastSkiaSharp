@@ -9,8 +9,6 @@ internal sealed class MotionMarkScene : IDisposable
 {
     private const int GridWidth = 80;
     private const int GridHeight = 40;
-    private const int QuadSegmentCount = 8;
-    private const int CubicSegmentCount = 12;
 
     private static readonly SKColor[] s_palette =
     [
@@ -32,6 +30,7 @@ internal sealed class MotionMarkScene : IDisposable
     ];
 
     private readonly List<Element> _elements = new();
+    private readonly SKPathBuilder _pathBuilder = new();
     private readonly SKPaint _strokePaint = new()
     {
         IsAntialias = true,
@@ -47,9 +46,6 @@ internal sealed class MotionMarkScene : IDisposable
     private readonly Random _random = new();
     private GridPoint _lastGridPoint = new(GridWidth / 2, GridHeight / 2);
     private int _complexity = 8;
-    private float _cachedScale;
-    private float _cachedOffsetX;
-    private float _cachedOffsetY;
     private bool _disposed;
 
     public int ElementCount => _elements.Count;
@@ -79,18 +75,59 @@ internal sealed class MotionMarkScene : IDisposable
         float offsetX = (width - uniformScale * (GridWidth + 1)) * 0.5f;
         float offsetY = (height - uniformScale * (GridHeight + 1)) * 0.5f;
 
-        EnsurePointCache(uniformScale, offsetX, offsetY);
-
         Span<Element> elements = CollectionsMarshal.AsSpan(_elements);
+        _pathBuilder.Reset();
+        bool pathStarted = false;
+
         for (int i = 0; i < elements.Length; i++)
         {
             ref Element element = ref elements[i];
-            _strokePaint.Color = element.Color;
-            _strokePaint.StrokeWidth = element.Width;
-            SKPoint[] points = element.Points!;
-            for (int point = 1; point < points.Length; point++)
+            if (!pathStarted)
             {
-                canvas.DrawLine(points[point - 1], points[point], _strokePaint);
+                SKPoint start = element.Start.ToPoint(uniformScale, offsetX, offsetY);
+                _pathBuilder.MoveTo(start);
+                pathStarted = true;
+            }
+
+            switch (element.Kind)
+            {
+                case SegmentKind.Line:
+                {
+                    SKPoint end = element.End.ToPoint(uniformScale, offsetX, offsetY);
+                    _pathBuilder.LineTo(end);
+                    break;
+                }
+                case SegmentKind.Quad:
+                {
+                    SKPoint c1 = element.Control1.ToPoint(uniformScale, offsetX, offsetY);
+                    SKPoint end = element.End.ToPoint(uniformScale, offsetX, offsetY);
+                    _pathBuilder.QuadTo(c1, end);
+                    break;
+                }
+                case SegmentKind.Cubic:
+                {
+                    SKPoint c1 = element.Control1.ToPoint(uniformScale, offsetX, offsetY);
+                    SKPoint c2 = element.Control2.ToPoint(uniformScale, offsetX, offsetY);
+                    SKPoint end = element.End.ToPoint(uniformScale, offsetX, offsetY);
+                    _pathBuilder.CubicTo(c1, c2, end);
+                    break;
+                }
+            }
+
+            bool finalize = element.Split || i == elements.Length - 1;
+            if (finalize)
+            {
+                _strokePaint.Color = element.Color;
+                _strokePaint.StrokeWidth = element.Width;
+                using SKPath path = _pathBuilder.Detach();
+                canvas.DrawPath(path, _strokePaint);
+                _pathBuilder.Reset();
+                pathStarted = false;
+            }
+
+            if (_random.NextDouble() > 0.995)
+            {
+                element.Split = !element.Split;
             }
         }
     }
@@ -100,7 +137,7 @@ internal sealed class MotionMarkScene : IDisposable
         if (_disposed)
             return;
 
-        ClearCachedPoints();
+        _pathBuilder.Dispose();
         _strokePaint.Dispose();
         _backgroundPaint.Dispose();
         _disposed = true;
@@ -114,7 +151,6 @@ internal sealed class MotionMarkScene : IDisposable
 
         if (count < current)
         {
-            ClearCachedPoints(count, current);
             _elements.RemoveRange(count, current - count);
             _lastGridPoint = count > 0
                 ? _elements[^1].End
@@ -167,108 +203,8 @@ internal sealed class MotionMarkScene : IDisposable
 
         element.Color = s_palette[_random.Next(s_palette.Length)];
         element.Width = (float)(Math.Pow(_random.NextDouble(), 5) * 20.0 + 1.0);
+        element.Split = _random.Next(2) == 0;
         return element;
-    }
-
-    private void EnsurePointCache(float scale, float offsetX, float offsetY)
-    {
-        bool transformChanged =
-            _cachedScale != scale ||
-            _cachedOffsetX != offsetX ||
-            _cachedOffsetY != offsetY;
-
-        if (transformChanged)
-        {
-            ClearCachedPoints();
-            _cachedScale = scale;
-            _cachedOffsetX = offsetX;
-            _cachedOffsetY = offsetY;
-        }
-
-        Span<Element> elements = CollectionsMarshal.AsSpan(_elements);
-        for (int i = 0; i < elements.Length; i++)
-        {
-            ref Element element = ref elements[i];
-            element.Points ??= CreatePoints(in element, scale, offsetX, offsetY);
-        }
-    }
-
-    private static SKPoint[] CreatePoints(in Element element, float scale, float offsetX, float offsetY)
-    {
-        SKPoint start = element.Start.ToPoint(scale, offsetX, offsetY);
-
-        switch (element.Kind)
-        {
-            case SegmentKind.Line:
-            {
-                return [start, element.End.ToPoint(scale, offsetX, offsetY)];
-            }
-            case SegmentKind.Quad:
-            {
-                return CreateQuadPoints(
-                    start,
-                    element.Control1.ToPoint(scale, offsetX, offsetY),
-                    element.End.ToPoint(scale, offsetX, offsetY));
-            }
-            case SegmentKind.Cubic:
-            {
-                return CreateCubicPoints(
-                    start,
-                    element.Control1.ToPoint(scale, offsetX, offsetY),
-                    element.Control2.ToPoint(scale, offsetX, offsetY),
-                    element.End.ToPoint(scale, offsetX, offsetY));
-            }
-            default:
-            {
-                return [start];
-            }
-        }
-    }
-
-    private static SKPoint[] CreateQuadPoints(SKPoint p0, SKPoint p1, SKPoint p2)
-    {
-        var points = new SKPoint[QuadSegmentCount + 1];
-        for (int i = 0; i < points.Length; i++)
-        {
-            float t = i / (float)QuadSegmentCount;
-            float u = 1 - t;
-            points[i] = new SKPoint(
-                u * u * p0.X + 2 * u * t * p1.X + t * t * p2.X,
-                u * u * p0.Y + 2 * u * t * p1.Y + t * t * p2.Y);
-        }
-
-        return points;
-    }
-
-    private static SKPoint[] CreateCubicPoints(SKPoint p0, SKPoint p1, SKPoint p2, SKPoint p3)
-    {
-        var points = new SKPoint[CubicSegmentCount + 1];
-        for (int i = 0; i < points.Length; i++)
-        {
-            float t = i / (float)CubicSegmentCount;
-            float u = 1 - t;
-            float uu = u * u;
-            float tt = t * t;
-            points[i] = new SKPoint(
-                uu * u * p0.X + 3 * uu * t * p1.X + 3 * u * tt * p2.X + tt * t * p3.X,
-                uu * u * p0.Y + 3 * uu * t * p1.Y + 3 * u * tt * p2.Y + tt * t * p3.Y);
-        }
-
-        return points;
-    }
-
-    private void ClearCachedPoints()
-    {
-        ClearCachedPoints(0, _elements.Count);
-    }
-
-    private void ClearCachedPoints(int start, int end)
-    {
-        Span<Element> elements = CollectionsMarshal.AsSpan(_elements);
-        for (int i = start; i < end; i++)
-        {
-            elements[i].Points = null;
-        }
     }
 
     private static int ComputeElementCount(int complexity)
@@ -317,7 +253,7 @@ internal sealed class MotionMarkScene : IDisposable
         public GridPoint End;
         public SKColor Color;
         public float Width;
-        public SKPoint[]? Points;
+        public bool Split;
     }
 
     private readonly struct GridPoint
