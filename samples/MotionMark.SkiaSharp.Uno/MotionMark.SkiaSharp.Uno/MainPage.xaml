@@ -1,0 +1,67 @@
+<Page x:Class="MotionMark.SkiaSharp.Uno.MainPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:controls="using:MotionMark.SkiaSharp.Uno.Controls"
+      Background="#101418">
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto" />
+      <RowDefinition Height="*" />
+    </Grid.RowDefinitions>
+
+    <Border Background="#1E2430"
+            BorderBrush="#3A4354"
+            BorderThickness="0,0,0,1"
+            Padding="12,8">
+      <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                    VerticalScrollBarVisibility="Disabled">
+        <StackPanel Orientation="Horizontal"
+                    Spacing="12"
+                    VerticalAlignment="Center">
+          <TextBlock Text="MotionMark CPU demo"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     VerticalAlignment="Center" />
+          <Border Width="1"
+                  Height="18"
+                  Margin="6,0"
+                  Background="#2E3648" />
+          <TextBlock Text="Complexity"
+                     VerticalAlignment="Center" />
+          <Slider Width="200"
+                  Minimum="0"
+                  Maximum="20"
+                  StepFrequency="1"
+                  SnapsTo="StepValues"
+                  SmallChange="1"
+                  LargeChange="2"
+                  Value="{Binding ComplexityValue, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+          <TextBlock Text="{Binding ComplexityText}"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding ElementCountText}"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding FrameTimeText}"
+                     VerticalAlignment="Center" />
+          <TextBlock Text="{Binding FramesPerSecondText}"
+                     VerticalAlignment="Center" />
+          <Border Width="1"
+                  Height="18"
+                  Margin="6,0"
+                  Background="#2E3648" />
+          <TextBlock Text="Multithreaded"
+                     VerticalAlignment="Center" />
+          <ToggleSwitch IsOn="{Binding UseMultithreadedRendering, Mode=TwoWay}"
+                        IsEnabled="{Binding IsMultithreadedToggleEnabled}"
+                        VerticalAlignment="Center" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <controls:MotionMarkCanvas x:Name="ManagedSurface"
+                               Grid.Row="1"
+                               Complexity="{Binding Complexity}"
+                               UseMultithreadedRendering="{Binding UseMultithreadedRendering}"
+                               HorizontalAlignment="Stretch"
+                               VerticalAlignment="Stretch" />
+  </Grid>
+</Page>
