@@ -1,12 +1,14 @@
 using System;
+using Windows.Foundation;
 using MotionMark.SkiaSharp.Uno.Rendering;
 using Microsoft.UI.Xaml;
 using SkiaSharp;
 using SkiaSharp.Views.Windows;
+using Uno.WinUI.Graphics2DSK;
 
 namespace MotionMark.SkiaSharp.Uno.Controls;
 
-public sealed class MotionMarkCanvas : SKXamlCanvas
+public sealed class MotionMarkCanvas : SKCanvasElement
 {
     public static readonly DependencyProperty ComplexityProperty =
         DependencyProperty.Register(
@@ -37,8 +39,6 @@ public sealed class MotionMarkCanvas : SKXamlCanvas
 
     public MotionMarkCanvas()
     {
-        IgnorePixelScaling = true;
-
         _timer.Tick += OnTimerTick;
 
         Loaded += OnLoaded;
@@ -105,19 +105,11 @@ public sealed class MotionMarkCanvas : SKXamlCanvas
         Invalidate();
     }
 
-    protected override void OnPaintSurface(SKPaintSurfaceEventArgs e)
+    protected override void RenderOverride(SKCanvas canvas, Size area)
     {
-        base.OnPaintSurface(e);
-
         try
         {
-            int width = e.Info.Width;
-            int height = e.Info.Height;
-            if (width <= 0 || height <= 0)
-                return;
-
-            _scene.Render(e.Surface.Canvas, width, height);
-            e.Surface.Canvas.Flush();
+            _scene.Render(canvas, (float)area.Width, (float)area.Height);
             UpdateFrameStats();
 
             _renderFailed = false;
